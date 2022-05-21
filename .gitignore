@@ -1,6 +1,5 @@
 node_modules
 .env
-.yarn
 coverage
 coverage.json
 typechain

@@ -5,6 +5,24 @@ require("@nomiclabs/hardhat-waffle");
 require("hardhat-gas-reporter");
 require("solidity-coverage");
 
+const {
+  INFURA_KEY,
+  MNEMONIC,
+  ETHERSCAN_API_KEY,
+  POLYGONSCAN_API_KEY,
+  PRIVATE_KEY,
+} = process.env;
+const DEFAULT_MNEMONIC = "hello darkness my old friend";
+
+const sharedNetworkConfig = {};
+if (PRIVATE_KEY) {
+  sharedNetworkConfig.accounts = [PRIVATE_KEY];
+} else {
+  sharedNetworkConfig.accounts = {
+    mnemonic: MNEMONIC || DEFAULT_MNEMONIC,
+  };
+}
+
 // This is a sample Hardhat task. To learn how to create your own go to
 // https://hardhat.org/guides/create-task.html
 task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
@@ -22,17 +40,42 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
  * @type import('hardhat/config').HardhatUserConfig
  */
 module.exports = {
-  solidity: "0.8.4",
+  solidity: {
+    compilers: [
+      {
+        version: "0.8.13",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
+      },
+    ],
+  },
+  defaultNetwork: "hardhat",
   networks: {
-    ropsten: {
-      url: process.env.ROPSTEN_URL || "",
-      accounts:
-        process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+    localhost: {
+      ...sharedNetworkConfig,
+      blockGasLimit: 100000000,
+      gas: 2000000,
+      saveDeployments: true,
+    },
+    hardhat: {
+      blockGasLimit: 400000000,
+      gas: 4000000,
+      saveDeployments: true,
     },
   },
+  namedAccounts: {
+    deployer: 0,
+    prime: 1,
+    beneficiary: 2,
+  },
   gasReporter: {
-    enabled: process.env.REPORT_GAS !== undefined,
+    enabled: false,
     currency: "USD",
+    coinmarketcap: process.env.COINMARKETCAP,
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY,
