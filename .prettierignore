@@ -1,5 +1,8 @@
-node_modules
 artifacts
+build
 cache
-coverage*
-gasReporterOutput.json
+coverage
+deployments
+node_modules
+docs
+.solcover.js

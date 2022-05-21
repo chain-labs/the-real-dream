@@ -6,10 +6,7 @@ require("hardhat-gas-reporter");
 require("solidity-coverage");
 
 const {
-  INFURA_KEY,
   MNEMONIC,
-  ETHERSCAN_API_KEY,
-  POLYGONSCAN_API_KEY,
   PRIVATE_KEY,
 } = process.env;
 const DEFAULT_MNEMONIC = "hello darkness my old friend";
