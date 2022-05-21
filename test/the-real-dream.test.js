@@ -92,9 +92,9 @@ describe("Contract: The Real Dream", () => {
       );
     });
     it("can delete royalties info", async () => {
-      let royaltyFee = maxRoyaltyFee / 10;
+      const royaltyFee = maxRoyaltyFee / 10;
       await instance.setRoyalty(owner.address, royaltyFee);
-      let tokenId = 1;
+      const tokenId = 1;
       let royaltyInfo = await instance.royaltyInfo(tokenId, oneEth);
       expect(royaltyInfo[0]).to.equal(owner.address);
       expect(royaltyInfo[1]).to.equal(
