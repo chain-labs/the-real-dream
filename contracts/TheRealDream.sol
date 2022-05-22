@@ -16,6 +16,7 @@ contract TheRealDream is
     ERC2981,
     TheRealDreamStorage
 {
+    uint256 public constant PREFIX_MULTIPLIER = 100_000_000;
     using Strings for uint256;
 
     event PaymentReleased(
@@ -28,6 +29,11 @@ contract TheRealDream is
         uint256 startTime,
         uint256 endTime
     );
+    event RewardAssetAdded(
+        uint256 indexed index,
+        uint256 maximumTokens,
+        string assetURI
+    );
 
     constructor(
         uint256 _maximumTokens,
@@ -35,12 +41,59 @@ contract TheRealDream is
         uint256 _minimumDistributionPeriod,
         string memory _name,
         string memory _symbol,
-        string memory _baseURI
+        string memory _baseURI,
+        string memory _assetURI
     ) ERC721(_name, _symbol) {
-        data.maximumTokens = _maximumTokens;
-        data.baseURI = _baseURI;
-        data.cooldownPeriod = _cooldownPeriod;
-        data.minimumDistributionPeriod = _minimumDistributionPeriod;
+        uint256 firstIndex = 1;
+        unchecked {
+            rewardsIndex = firstIndex;
+        }
+        _addNewReward(
+            firstIndex,
+            _maximumTokens,
+            _cooldownPeriod,
+            _minimumDistributionPeriod,
+            _baseURI,
+            _assetURI
+        );
+    }
+
+    function addNewReward(
+        uint256 _maximumTokens,
+        uint256 _cooldownPeriod,
+        uint256 _minimumDistributionPeriod,
+        string memory _baseURI,
+        string memory _assetURI
+    ) external onlyOwner {
+        uint256 currentIndex = rewardsIndex;
+        unchecked {
+            rewardsIndex = currentIndex + 1;
+        }
+        currentIndex++;
+        _addNewReward(
+            currentIndex,
+            _maximumTokens,
+            _cooldownPeriod,
+            _minimumDistributionPeriod,
+            _baseURI,
+            _assetURI
+        );
+    }
+
+    function _addNewReward(
+        uint256 _index,
+        uint256 _maximumTokens,
+        uint256 _cooldownPeriod,
+        uint256 _minimumDistributionPeriod,
+        string memory _baseURI,
+        string memory _assetURI
+    ) internal {
+        rewards[_index].maximumTokens = _maximumTokens;
+        rewards[_index].baseURI = _baseURI;
+        rewards[_index].cooldownPeriod = _cooldownPeriod;
+        rewards[_index].minimumDistributionPeriod = _minimumDistributionPeriod;
+        rewards[_index].assetURI = _assetURI;
+        emit RewardAssetAdded(_index, _maximumTokens, _assetURI);
     }
 
     //
@@ -53,17 +106,27 @@ contract TheRealDream is
     }
 
     // Owner Functions
-    function airdrop(address[] calldata _receivers) external onlyOwner {
+    function airdrop(address[] calldata _receivers, uint256 _rewardIndex)
+        external
+        onlyOwner
+    {
         require(_receivers.length > 0, "ZERO_RECEIVERS_COUNT");
         require(
-            data.totalSupply + _receivers.length <= data.maximumTokens,
+            rewards[_rewardIndex].totalSupply + _receivers.length <=
+                rewards[_rewardIndex].maximumTokens,
             "MAX_TOKENS_REACHED"
         );
+        uint256 prefix = _rewardIndex * PREFIX_MULTIPLIER;
         for (uint256 i; i < _receivers.length; i++) {
             unchecked {
-                data.totalSupply = data.totalSupply + 1;
+                rewards[_rewardIndex].totalSupply =
+                    rewards[_rewardIndex].totalSupply +
+                    1;
             }
-            _safeMint(_receivers[i], data.totalSupply);
+            _safeMint(
+                _receivers[i],
+                rewards[_rewardIndex].totalSupply + prefix
+            );
         }
     }
 
@@ -77,16 +140,26 @@ contract TheRealDream is
 
     function prepareForRewards(
         uint256 _distributionStartTime,
-        uint256 _distributionEndTime
+        uint256 _distributionEndTime,
+        uint256 _rewardIndex
     ) external payable onlyOwner {
-        require(data.totalSupply == data.maximumTokens, "TOKENS_NOT_DISTRIBUTED");
-        require(_distributionEndTime - _distributionStartTime >= data.minimumDistributionPeriod, "SHORT_DISTRIBUTION_PERIOD");
         require(
-            _distributionStartTime >= block.timestamp + data.cooldownPeriod,
+            rewards[_rewardIndex].totalSupply ==
+                rewards[_rewardIndex].maximumTokens,
+            "TOKENS_NOT_DISTRIBUTED"
+        );
+        require(
+            _distributionEndTime - _distributionStartTime >=
+                rewards[_rewardIndex].minimumDistributionPeriod,
+            "SHORT_DISTRIBUTION_PERIOD"
+        );
+        require(
+            _distributionStartTime >=
+                block.timestamp + rewards[_rewardIndex].cooldownPeriod,
             "SHORT_NOTICE"
         );
-        data.distributionStartTime = _distributionStartTime;
-        data.distributionEndTime = _distributionEndTime;
+        rewards[_rewardIndex].distributionStartTime = _distributionStartTime;
+        rewards[_rewardIndex].distributionEndTime = _distributionEndTime;
         emit PrepareRewards(
             msg.value,
             _distributionStartTime,
@@ -104,25 +177,32 @@ contract TheRealDream is
         return super.supportsInterface(interfaceId);
     }
 
-    function setBaseURI(string calldata _baseURI) external onlyOwner {
-        data.baseURI = _baseURI;
+    function setBaseURI(string calldata _baseURI, uint256 _rewardIndex)
+        external
+        onlyOwner
+    {
+        rewards[_rewardIndex].baseURI = _baseURI;
     }
 
     function releaseReward(uint256 tokenId) external {
+        uint256 _rewardIndex = getRewardIndex(tokenId);
         require(
-            (data.distributionStartTime <= block.timestamp &&
-                data.distributionEndTime > block.timestamp),
+            (rewards[_rewardIndex].distributionStartTime <= block.timestamp &&
+                rewards[_rewardIndex].distributionEndTime > block.timestamp),
             "INVALID_DISTRIBUTION_PERIOD"
         );
         require(_exists(tokenId), "nonexistent token");
 
-        uint256 totalReceived = address(this).balance + data.totalReleased;
-        uint256 payment = totalReceived / data.maximumTokens - data.released[tokenId];
+        uint256 totalReceived = address(this).balance +
+            rewards[_rewardIndex].totalReleased;
+        uint256 payment = totalReceived /
+            rewards[_rewardIndex].maximumTokens -
+            rewards[_rewardIndex].released[tokenId];
 
         require(payment != 0, "no due payment");
 
-        data.released[tokenId] += payment;
-        data.totalReleased += payment;
+        rewards[_rewardIndex].released[tokenId] += payment;
+        rewards[_rewardIndex].totalReleased += payment;
 
         Address.sendValue(payable(ownerOf(tokenId)), payment);
         emit PaymentReleased(tokenId, payment, ownerOf(tokenId));
@@ -136,16 +216,14 @@ contract TheRealDream is
         returns (string memory)
     {
         require(_exists(tokenId), "nonexistent token");
+        uint256 _rewardIndex = getRewardIndex(tokenId);
+        uint256 id = tokenId % PREFIX_MULTIPLIER;
 
-        string memory baseURI = _baseURI();
+        string memory baseURI = rewards[_rewardIndex].baseURI;
         return
             bytes(baseURI).length > 0
-                ? string(abi.encodePacked(baseURI, tokenId.toString(), ".json"))
+                ? string(abi.encodePacked(baseURI, id.toString(), ".json"))
                 : "";
-    }
-
-    function _baseURI() internal view virtual override returns (string memory) {
-        return data.baseURI;
     }
 
     function _beforeTokenTransfer(
@@ -154,11 +232,16 @@ contract TheRealDream is
         uint256 tokenId
     ) internal virtual override {
         // if (distributionEndTime != 0 && distributionStartTime != 0) {
+        uint256 _rewardIndex = getRewardIndex(tokenId);
         require(
-            !(data.distributionStartTime <= block.timestamp &&
-                data.distributionEndTime > block.timestamp),
+            !(rewards[_rewardIndex].distributionStartTime <= block.timestamp &&
+                rewards[_rewardIndex].distributionEndTime > block.timestamp),
             "TRANSFER_PAUSED"
         );
         // }
+    }
+
+    function getRewardIndex(uint256 _tokenId) public view returns (uint256) {
+        return _tokenId / PREFIX_MULTIPLIER;
     }
 }
