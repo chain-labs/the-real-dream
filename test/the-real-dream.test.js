@@ -294,4 +294,12 @@ describe("Contract: The Real Dream", () => {
       });
     });
   });
+  context("sending eth directly to contract", () => {
+    it("fails when sending ETH directly", async () => {
+      await expect(owner.sendTransaction({
+        to: instance.address,
+        value: oneEth
+      })).to.be.revertedWith("NOT_ALLOWED");
+    })
+  })
 });
