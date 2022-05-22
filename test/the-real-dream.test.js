@@ -1,14 +1,32 @@
 const { parseEther } = require("@ethersproject/units");
 const { expect, use } = require("chai");
 const { solidity } = require("ethereum-waffle");
+const { time } = require("@openzeppelin/test-helpers");
 use(solidity);
 
 const contractName = "TheRealDream";
 const baseURI1 = "therealdream.com/api/";
 const baseURI2 = "therealdream.com/api/v2/";
-const contractParams = ["The Real Dream", "TRD", 4, baseURI1];
+const maximumTokens = 4;
+const cooldownPeriod = 120; // 2 minutes
+const minimumDistributionPeriod = 240; // 4 mintues
+const buffer = 10;
+const contractParams = [
+  maximumTokens,
+  cooldownPeriod,
+  minimumDistributionPeriod,
+  "The Real Dream",
+  "TRD",
+  baseURI1,
+];
+const multiplier = 3;
 const maxRoyaltyFee = 10000;
 const oneEth = parseEther("1");
+
+const increaseTimeTo = async () => {
+  await network.provider.send("evm_setNextBlockTimestamp", [1625097600]);
+  await network.provider.send("evm_mine");
+};
 
 const setupContract = async (signer) => {
   const factory = await ethers.getContractFactory(contractName, signer);
@@ -126,7 +144,126 @@ describe("Contract: The Real Dream", () => {
       );
     });
     it("support interface", async () => {
-      console.log(await instance.supportsInterface("0x12345678"));
+      await instance.supportsInterface("0x12345678");
+    });
+  });
+  context("owner can deposit funds", () => {
+    it("cannot deposit if tokens are not distributed", async () => {
+      const currentTime = parseInt((await time.latest()).toString());
+      const startTime = currentTime + cooldownPeriod;
+      const endTime = currentTime + cooldownPeriod * multiplier;
+      await expect(
+        instance.prepareForRewards(startTime, endTime, { value: oneEth })
+      ).to.be.revertedWith("TOKENS_NOT_DISTRIBUTED");
+    });
+    context("preapre for rewards when tokens are distributed", () => {
+      beforeEach("!! distribute tokens", async () => {
+        const receiverList = [holder1.address, holder2.address];
+        await instance.airdrop([...receiverList, ...receiverList]);
+        const data = await instance.data();
+        expect(data.totalSupply).to.equal(maximumTokens);
+      });
+      it("can deposit if tokens are distributed", async () => {
+        const currentTime = parseInt((await time.latest()).toString());
+        const startTime = currentTime + cooldownPeriod + buffer;
+        const endTime = currentTime + cooldownPeriod * multiplier + buffer;
+        await instance.prepareForRewards(startTime, endTime, { value: oneEth });
+      });
+      it("cannot distribute with short notice", async () => {
+        const currentTime = parseInt((await time.latest()).toString());
+        const startTime = currentTime + cooldownPeriod - buffer;
+        const endTime = currentTime + cooldownPeriod * multiplier;
+        await expect(
+          instance.prepareForRewards(startTime, endTime, { value: oneEth })
+        ).to.be.revertedWith("SHORT_NOTICE");
+      });
+      it("cannot have distribution period too short", async () => {
+        const currentTime = parseInt((await time.latest()).toString());
+        const startTime = currentTime + cooldownPeriod + buffer;
+        const endTime = currentTime + cooldownPeriod + buffer;
+        await expect(instance.prepareForRewards(startTime, endTime, { value: oneEth })).to.be.revertedWith("SHORT_DISTRIBUTION_PERIOD");
+      })
+    });
+  });
+  context("can split payments", () => {
+    beforeEach("!! deposit some funds and airdrop tokens", async () => {
+      const receiverList = [holder1.address, holder2.address];
+      await instance.connect(owner).airdrop([...receiverList, ...receiverList]);
+      const currentTime = parseInt((await time.latest()).toString());
+      const startTime = currentTime + cooldownPeriod + buffer;
+      const endTime = currentTime + cooldownPeriod * multiplier + buffer;
+      await instance.prepareForRewards(startTime, endTime, {
+        value: oneEth.mul(maximumTokens),
+      });
+    });
+    context("before distribution period starts", async () => {
+      it("cannot release before distribution period starts", async () => {
+        const tokenId = 1;
+        await expect(
+          instance.connect(holder1).releaseReward(tokenId)
+        ).to.be.revertedWith("INVALID_DISTRIBUTION_PERIOD");
+      });
+      it("can transfer token before distribution period", async () => {
+        await instance
+          .connect(holder1)
+          .transferFrom(holder1.address, holder2.address, 3);
+      });
+    });
+    context("during distribution period", async () => {
+      beforeEach("!! jump to distribution period", async () => {
+        const data = await instance.data();
+        await time.increaseTo(
+          (data.distributionStartTime).toString()
+        );
+      });
+      it("cannot release if token doesn't exists", async () => {
+        const tokenId = 0;
+        await expect(
+          instance.connect(holder1).releaseReward(tokenId)
+        ).to.be.revertedWith("nonexistent token");
+      });
+      it("releases payment for valid token to owner of token", async () => {
+        const tokenId = 1;
+        await expect(
+          await instance.connect(holder1).releaseReward(tokenId)
+        ).to.changeEtherBalance(
+          holder1,
+          oneEth.mul(maximumTokens).div(maximumTokens)
+        );
+      });
+      it("cannot release payment when nothing is due", async () => {
+        const tokenId = 1;
+        await instance.connect(holder1).releaseReward(tokenId);
+        await expect(
+          instance.connect(holder1).releaseReward(tokenId)
+        ).to.be.revertedWith("no due payment");
+      });
+      it("cannot transfer token during distribution period", async () => {
+        await expect(
+          instance
+            .connect(holder1)
+            .transferFrom(holder1.address, holder2.address, 3)
+        ).to.be.revertedWith("TRANSFER_PAUSED");
+      });
+    });
+    context("after distribution period", async () => {
+      beforeEach("!! jump to distribution end time", async () => {
+        const data = await instance.data();
+        await time.increaseTo(
+          data.distributionEndTime.toString()
+        );
+      });
+      it("cannot release", async () => {
+        const tokenId = 1;
+        await expect(
+          instance.connect(holder1).releaseReward(tokenId)
+        ).to.be.revertedWith("INVALID_DISTRIBUTION_PERIOD");
+      });
+      it("can transfer token after distribution period", async () => {
+        await instance
+          .connect(holder1)
+          .transferFrom(holder1.address, holder2.address, 3);
+      });
     });
   });
 });

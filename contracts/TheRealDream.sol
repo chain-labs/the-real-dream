@@ -1,6 +1,6 @@
 pragma solidity 0.8.13;
 
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
@@ -12,20 +12,35 @@ contract TheRealDream is
     Ownable,
     Pausable,
     ReentrancyGuard,
-    ERC721Enumerable,
+    ERC721,
     ERC2981,
     TheRealDreamStorage
 {
     using Strings for uint256;
 
+    event PaymentReleased(
+        uint256 indexed tokenId,
+        uint256 payment,
+        address indexed receiver
+    );
+    event PrepareRewards(
+        uint256 depositAmount,
+        uint256 startTime,
+        uint256 endTime
+    );
+
     constructor(
+        uint256 _maximumTokens,
+        uint256 _cooldownPeriod,
+        uint256 _minimumDistributionPeriod,
         string memory _name,
         string memory _symbol,
-        uint256 _maximumTokens,
         string memory _baseURI
     ) ERC721(_name, _symbol) {
-        maximumTokens = _maximumTokens;
-        baseURI = _baseURI;
+        data.maximumTokens = _maximumTokens;
+        data.baseURI = _baseURI;
+        data.cooldownPeriod = _cooldownPeriod;
+        data.minimumDistributionPeriod = _minimumDistributionPeriod;
     }
 
     //
@@ -41,11 +56,14 @@ contract TheRealDream is
     function airdrop(address[] calldata _receivers) external onlyOwner {
         require(_receivers.length > 0, "ZERO_RECEIVERS_COUNT");
         require(
-            totalSupply() + _receivers.length <= maximumTokens,
+            data.totalSupply + _receivers.length <= data.maximumTokens,
             "MAX_TOKENS_REACHED"
         );
         for (uint256 i; i < _receivers.length; i++) {
-            _safeMint(_receivers[i], totalSupply() + 1);
+            unchecked {
+                data.totalSupply = data.totalSupply + 1;
+            }
+            _safeMint(_receivers[i], data.totalSupply);
         }
     }
 
@@ -57,18 +75,57 @@ contract TheRealDream is
         _deleteDefaultRoyalty();
     }
 
+    function prepareForRewards(
+        uint256 _distributionStartTime,
+        uint256 _distributionEndTime
+    ) external payable onlyOwner {
+        require(data.totalSupply == data.maximumTokens, "TOKENS_NOT_DISTRIBUTED");
+        require(_distributionEndTime - _distributionStartTime >= data.minimumDistributionPeriod, "SHORT_DISTRIBUTION_PERIOD");
+        require(
+            _distributionStartTime >= block.timestamp + data.cooldownPeriod,
+            "SHORT_NOTICE"
+        );
+        data.distributionStartTime = _distributionStartTime;
+        data.distributionEndTime = _distributionEndTime;
+        emit PrepareRewards(
+            msg.value,
+            _distributionStartTime,
+            _distributionEndTime
+        );
+    }
+
     function supportsInterface(bytes4 interfaceId)
         public
         view
         virtual
-        override(ERC721Enumerable, ERC2981)
+        override(ERC721, ERC2981)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
     }
 
     function setBaseURI(string calldata _baseURI) external onlyOwner {
-        baseURI = _baseURI;
+        data.baseURI = _baseURI;
+    }
+
+    function releaseReward(uint256 tokenId) external {
+        require(
+            (data.distributionStartTime <= block.timestamp &&
+                data.distributionEndTime > block.timestamp),
+            "INVALID_DISTRIBUTION_PERIOD"
+        );
+        require(_exists(tokenId), "nonexistent token");
+
+        uint256 totalReceived = address(this).balance + data.totalReleased;
+        uint256 payment = totalReceived / data.maximumTokens - data.released[tokenId];
+
+        require(payment != 0, "no due payment");
+
+        data.released[tokenId] += payment;
+        data.totalReleased += payment;
+
+        Address.sendValue(payable(ownerOf(tokenId)), payment);
+        emit PaymentReleased(tokenId, payment, ownerOf(tokenId));
     }
 
     function tokenURI(uint256 tokenId)
@@ -88,6 +145,20 @@ contract TheRealDream is
     }
 
     function _baseURI() internal view virtual override returns (string memory) {
-        return baseURI;
+        return data.baseURI;
+    }
+
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 tokenId
+    ) internal virtual override {
+        // if (distributionEndTime != 0 && distributionStartTime != 0) {
+        require(
+            !(data.distributionStartTime <= block.timestamp &&
+                data.distributionEndTime > block.timestamp),
+            "TRANSFER_PAUSED"
+        );
+        // }
     }
 }
