@@ -16,4 +16,5 @@ contract TheRealDreamStorage {
     }
     mapping(uint256 => RewardData) public rewards;
     uint256 public rewardsIndex;
+    uint256 public totalSupply;
 }

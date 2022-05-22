@@ -155,6 +155,7 @@ describe("Contract: The Real Dream", () => {
     beforeEach("!! Airdrop token", async () => {
       const receiverList = [holder1.address, holder2.address];
       await instance.connect(owner).airdrop(receiverList, firstReward);
+      expect(await instance.totalSupply()).to.equal(receiverList.length);
     });
     it("returns correct token URI", async () => {
       const id = 1;
@@ -190,6 +191,7 @@ describe("Contract: The Real Dream", () => {
         await instance.airdrop([...receiverList, ...receiverList], firstReward);
         const data = await instance.rewards(firstReward);
         expect(data.totalSupply).to.equal(maximumTokens);
+        expect(await instance.totalSupply()).to.equal(maximumTokens);
       });
       it("can deposit if tokens are distributed", async () => {
         const currentTime = parseInt((await time.latest()).toString());

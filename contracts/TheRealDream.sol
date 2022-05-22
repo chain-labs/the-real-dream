@@ -119,6 +119,9 @@ contract TheRealDream is
             "MAX_TOKENS_REACHED"
         );
         uint256 prefix = _rewardIndex * PREFIX_MULTIPLIER;
+        unchecked {
+            totalSupply = totalSupply + _receivers.length;
+        }
         for (uint256 i; i < _receivers.length; i++) {
             unchecked {
                 rewards[_rewardIndex].totalSupply =
