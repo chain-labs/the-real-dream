@@ -9,7 +9,7 @@ const baseURI1 = "therealdream.com/api/";
 const baseURI2 = "therealdream.com/api/v2/";
 const assetURI = "youtube.com/video/xyz";
 const asset2URI = "youtube.com/video/abc";
-const firstReward = 1
+const firstReward = 1;
 const maximumTokens = 4;
 const cooldownPeriod = 120; // 2 minutes
 const prefix = 100000000;
@@ -28,7 +28,8 @@ const multiplier = 3;
 const maxRoyaltyFee = 10000;
 const oneEth = parseEther("1");
 
-const generateTokenId = (rewardIndex, tokenId) => (rewardIndex * prefix) + tokenId;
+const generateTokenId = (rewardIndex, tokenId) =>
+  rewardIndex * prefix + tokenId;
 
 const increaseTimeTo = async () => {
   await network.provider.send("evm_setNextBlockTimestamp", [1625097600]);
@@ -59,7 +60,7 @@ describe("Contract: The Real Dream", () => {
         asset2URI,
       ];
       await instance.addNewReward(...params2);
-      const data = await instance.rewards(firstReward+1);
+      const data = await instance.rewards(firstReward + 1);
       expect(data.maximumTokens).to.equal(maximumTokens);
       expect(data.cooldownPeriod).to.equal(cooldownPeriod);
       expect(data.minimumDistributionPeriod).to.equal(
@@ -84,9 +85,9 @@ describe("Contract: The Real Dream", () => {
   });
   context("Owner can airdrop tokens", () => {
     it("cannot airdrop if no address supplied", async () => {
-      await expect(instance.connect(owner).airdrop([], firstReward)).to.be.revertedWith(
-        "ZERO_RECEIVERS_COUNT"
-      );
+      await expect(
+        instance.connect(owner).airdrop([], firstReward)
+      ).to.be.revertedWith("ZERO_RECEIVERS_COUNT");
     });
     it("can airdrop to multiple address", async () => {
       const receiverList = [holder1.address, holder2.address];
@@ -102,7 +103,9 @@ describe("Contract: The Real Dream", () => {
       await instance.connect(owner).airdrop(receiverList, firstReward);
       // 2nd airdrop tried but should fail
       await expect(
-        instance.connect(owner).airdrop([...receiverList, ...receiverList], firstReward)
+        instance
+          .connect(owner)
+          .airdrop([...receiverList, ...receiverList], firstReward)
       ).to.be.revertedWith("MAX_TOKENS_REACHED");
     });
   });
@@ -182,7 +185,9 @@ describe("Contract: The Real Dream", () => {
       const startTime = currentTime + cooldownPeriod;
       const endTime = currentTime + cooldownPeriod * multiplier;
       await expect(
-        instance.prepareForRewards(startTime, endTime, firstReward, { value: oneEth })
+        instance.prepareForRewards(startTime, endTime, firstReward, {
+          value: oneEth,
+        })
       ).to.be.revertedWith("TOKENS_NOT_DISTRIBUTED");
     });
     context("preapre for rewards when tokens are distributed", () => {
@@ -197,14 +202,18 @@ describe("Contract: The Real Dream", () => {
         const currentTime = parseInt((await time.latest()).toString());
         const startTime = currentTime + cooldownPeriod + buffer;
         const endTime = currentTime + cooldownPeriod * multiplier + buffer;
-        await instance.prepareForRewards(startTime, endTime, firstReward, { value: oneEth });
+        await instance.prepareForRewards(startTime, endTime, firstReward, {
+          value: oneEth,
+        });
       });
       it("cannot distribute with short notice", async () => {
         const currentTime = parseInt((await time.latest()).toString());
         const startTime = currentTime + cooldownPeriod - buffer;
         const endTime = currentTime + cooldownPeriod * multiplier;
         await expect(
-          instance.prepareForRewards(startTime, endTime, firstReward, { value: oneEth })
+          instance.prepareForRewards(startTime, endTime, firstReward, {
+            value: oneEth,
+          })
         ).to.be.revertedWith("SHORT_NOTICE");
       });
       it("cannot have distribution period too short", async () => {
@@ -212,7 +221,9 @@ describe("Contract: The Real Dream", () => {
         const startTime = currentTime + cooldownPeriod + buffer;
         const endTime = currentTime + cooldownPeriod + buffer;
         await expect(
-          instance.prepareForRewards(startTime, endTime, firstReward, { value: oneEth })
+          instance.prepareForRewards(startTime, endTime, firstReward, {
+            value: oneEth,
+          })
         ).to.be.revertedWith("SHORT_DISTRIBUTION_PERIOD");
       });
     });
@@ -240,7 +251,11 @@ describe("Contract: The Real Dream", () => {
       it("can transfer token before distribution period", async () => {
         await instance
           .connect(holder1)
-          .transferFrom(holder1.address, holder2.address, generateTokenId(firstReward, 3));
+          .transferFrom(
+            holder1.address,
+            holder2.address,
+            generateTokenId(firstReward, 3)
+          );
       });
     });
     context("during distribution period", async () => {
@@ -256,6 +271,9 @@ describe("Contract: The Real Dream", () => {
       });
       it("releases payment for valid token to owner of token", async () => {
         const tokenId = generateTokenId(firstReward, 1);
+        expect(await instance.pendingReward(tokenId)).to.equal(
+          oneEth.mul(maximumTokens).div(maximumTokens)
+        );
         await expect(
           await instance.connect(holder1).releaseReward(tokenId)
         ).to.changeEtherBalance(
@@ -274,7 +292,11 @@ describe("Contract: The Real Dream", () => {
         await expect(
           instance
             .connect(holder1)
-            .transferFrom(holder1.address, holder2.address, generateTokenId(firstReward, 3))
+            .transferFrom(
+              holder1.address,
+              holder2.address,
+              generateTokenId(firstReward, 3)
+            )
         ).to.be.revertedWith("TRANSFER_PAUSED");
       });
     });
@@ -292,16 +314,22 @@ describe("Contract: The Real Dream", () => {
       it("can transfer token after distribution period", async () => {
         await instance
           .connect(holder1)
-          .transferFrom(holder1.address, holder2.address, generateTokenId(firstReward, 3));
+          .transferFrom(
+            holder1.address,
+            holder2.address,
+            generateTokenId(firstReward, 3)
+          );
       });
     });
   });
   context("sending eth directly to contract", () => {
     it("fails when sending ETH directly", async () => {
-      await expect(owner.sendTransaction({
-        to: instance.address,
-        value: oneEth
-      })).to.be.revertedWith("NOT_ALLOWED");
-    })
-  })
+      await expect(
+        owner.sendTransaction({
+          to: instance.address,
+          value: oneEth,
+        })
+      ).to.be.revertedWith("NOT_ALLOWED");
+    });
+  });
 });

@@ -190,7 +190,7 @@ contract TheRealDream is
         rewards[_rewardIndex].baseURI = _baseURI;
     }
 
-    function releaseReward(uint256 tokenId) external {
+    function releaseReward(uint256 tokenId) external whenNotPaused {
         uint256 _rewardIndex = getRewardIndex(tokenId);
         require(
             (rewards[_rewardIndex].distributionStartTime <= block.timestamp &&
@@ -201,8 +201,8 @@ contract TheRealDream is
 
         uint256 totalReceived = rewards[_rewardIndex].totalBalance +
             rewards[_rewardIndex].totalReleased;
-        uint256 payment = totalReceived /
-            rewards[_rewardIndex].maximumTokens -
+        uint256 payment = (totalReceived /
+            rewards[_rewardIndex].maximumTokens) -
             rewards[_rewardIndex].released[tokenId];
 
         require(payment != 0, "no due payment");
@@ -212,6 +212,15 @@ contract TheRealDream is
         _decreaseBalance(payment, _rewardIndex);
         Address.sendValue(payable(ownerOf(tokenId)), payment);
         emit PaymentReleased(tokenId, payment, ownerOf(tokenId));
+    }
+
+    function pendingReward(uint256 tokenId) external view returns (uint256) {
+        uint256 _rewardIndex = getRewardIndex(tokenId);
+        uint256 totalReceived = rewards[_rewardIndex].totalBalance +
+            rewards[_rewardIndex].totalReleased;
+        return
+            (totalReceived / rewards[_rewardIndex].maximumTokens) -
+            rewards[_rewardIndex].released[tokenId];
     }
 
     function tokenURI(uint256 tokenId)
@@ -255,7 +264,7 @@ contract TheRealDream is
         // }
     }
 
-    function getRewardIndex(uint256 _tokenId) public view returns (uint256) {
+    function getRewardIndex(uint256 _tokenId) public pure returns (uint256) {
         return _tokenId / PREFIX_MULTIPLIER;
     }
 
