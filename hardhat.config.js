@@ -5,9 +5,14 @@ require("@nomiclabs/hardhat-waffle");
 require("hardhat-gas-reporter");
 require("@nomiclabs/hardhat-web3");
 require("solidity-coverage");
+require('hardhat-deploy');
+require("hardhat-contract-sizer");
 
 const {
+  INFURA_KEY,
   MNEMONIC,
+  ETHERSCAN_API_KEY,
+  POLYGONSCAN_API_KEY,
   PRIVATE_KEY,
 } = process.env;
 const DEFAULT_MNEMONIC = "hello darkness my old friend";
@@ -64,6 +69,11 @@ module.exports = {
       gas: 4000000,
       saveDeployments: true,
     },
+    rinkeby: {
+      ...sharedNetworkConfig,
+      url: `https://rinkeby.infura.io/v3/${INFURA_KEY}`,
+      saveDeployments: true,
+    },
   },
   namedAccounts: {
     deployer: 0,
@@ -71,7 +81,7 @@ module.exports = {
     beneficiary: 2,
   },
   gasReporter: {
-    enabled: false,
+    enabled: true,
     currency: "USD",
     coinmarketcap: process.env.COINMARKETCAP,
   },
